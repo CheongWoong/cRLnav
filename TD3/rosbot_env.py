@@ -141,7 +141,7 @@ class GazeboEnv:
             [min(laser_state[i*step_size:(i+1)*step_size]) for i in range(self.environment_dim)]
         )
 
-        laser_state = laser_state[::-1]
+        # laser_state = laser_state[::-1]
         self.laser_scan_data = laser_state
 
     def odom_callback(self, od_data):
@@ -351,7 +351,7 @@ class GazeboEnv:
         return state
 
     def change(self):
-        self.TIME_DELTA = np.random.uniform(0.1, 1)
+        self.TIME_DELTA = np.random.uniform(0.1, 0.4)
         self.SENSOR_DELAY = np.random.uniform(0, 0.5)
         self.ACTION_NOISE = np.random.uniform(0.8, 1.2, 2)
 
