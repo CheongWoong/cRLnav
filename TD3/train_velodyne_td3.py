@@ -19,7 +19,7 @@ def evaluate(network, epoch, eval_episodes=10):
         count = 0
         state = env.reset()
         done = False
-        while not done and count < 501:
+        while not done and count <= 50/env.TIME_DELTA:
             action = network.get_action(np.array(state))
             a_in = [(action[0] + 1) / 2, action[1]]
             state, reward, done, _ = env.step(a_in)
@@ -162,7 +162,7 @@ class TD3(object):
             # Get the Q values of the basis networks with the current parameters
             current_Q1, current_Q2 = self.critic(state, action)
 
-            # Calculate the loss between the current Q value and the target Q value
+            # Calculate the loss between the current Q value and thesteer_drive_controller target Q value
             loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
 
             # Perform the gradient descent
