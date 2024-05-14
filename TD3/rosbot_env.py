@@ -112,7 +112,7 @@ class GazeboEnv:
         print("Gazebo launched!")
 
         # Set up the ROS publishers and subscribers
-        self.vel_pub = rospy.Publisher("/r1/cmd_vel", Twist, queue_size=1)
+        self.vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
         self.set_state = rospy.Publisher(
             "gazebo/set_model_state", ModelState, queue_size=10
         )
@@ -126,7 +126,7 @@ class GazeboEnv:
             "/scan", LaserScan, self.laser_scan_callback, queue_size=1
         )
         self.odom = rospy.Subscriber(
-            "/r1/odom", Odometry, self.odom_callback, queue_size=1
+            "/odom", Odometry, self.odom_callback, queue_size=1
         )
 
     def laser_scan_callback(self, laser_data):
