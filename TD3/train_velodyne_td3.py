@@ -221,6 +221,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda or
 seed = 0  # Random seed number
 eval_freq = 5e3  # After how many steps to perform the evaluation
 max_ep = 500  # maximum number of steps per episode
+max_time = 50
 eval_ep = 10  # number of episodes for evaluation
 max_timesteps = 5e6  # Maximum number of steps to perform
 expl_noise = 1  # Initial exploration noise starting value in range [expl_min ... 1]
@@ -304,7 +305,9 @@ while timestep < max_timesteps:
             evaluations.append(
                 evaluate(network=network, epoch=epoch, eval_episodes=eval_ep)
             )
-            network.save(file_name, directory="./pytorch_models")
+            network.save(f"{file_name}", directory="./pytorch_models")
+            if epoch >= 70:
+                network.save(f"{file_name}_epoch_{epoch}", directory="./pytorch_models")
             np.save("./results/%s" % (file_name), evaluations)
             epoch += 1
 
@@ -344,8 +347,8 @@ while timestep < max_timesteps:
     # Update action to fall in range [0,1] for linear velocity and [-1,1] for angular velocity
     a_in = [(action[0] + 1) / 2, action[1]]
     next_state, reward, done, target = env.step(a_in)
-    done_bool = 0 if episode_timesteps + 1 == max_ep else int(done)
-    done = 1 if episode_timesteps + 1 == max_ep else int(done)
+    done_bool = 0 if episode_timesteps + 1 >= max_time/env.TIME_DELTA else int(done)
+    done = 1 if episode_timesteps + 1 >= max_time/env.TIME_DELTA else int(done)
     episode_reward += reward
 
     # Save the tuple in replay buffer

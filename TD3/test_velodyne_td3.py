@@ -46,6 +46,7 @@ class TD3(object):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda or cpu
 seed = 0  # Random seed number
 max_ep = 500  # maximum number of steps per episode
+max_time = 50
 file_name = "TD3_velodyne"  # name of the file to load the policy from
 
 
@@ -77,7 +78,7 @@ while True:
     # Update action to fall in range [0,1] for linear velocity and [-1,1] for angular velocity
     a_in = [(action[0] + 1) / 2, action[1]]
     next_state, reward, done, target = env.step(a_in)
-    done = 1 if episode_timesteps + 1 == max_ep else int(done)
+    done = 1 if episode_timesteps + 1 == max_time/env.TIME_DELTA else int(done)
 
     # On termination of episode
     if done:
