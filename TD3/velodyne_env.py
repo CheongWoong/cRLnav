@@ -17,6 +17,8 @@ from std_srvs.srv import Empty
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
+from collections import deque
+
 GOAL_REACHED_DIST = 0.1
 COLLISION_DIST = 0.35
 
@@ -66,6 +68,7 @@ class GazeboEnv:
 
     def __init__(self, launchfile, environment_dim):
         self.environment_dim = environment_dim
+        self.len_history = 5
         self.odom_x = 0
         self.odom_y = 0
 
@@ -228,7 +231,8 @@ class GazeboEnv:
             theta = np.pi - theta
 
         robot_state = [distance, theta, action[0], action[1]]
-        state = np.append(laser_state, robot_state)
+        self.robot_states.append(robot_state)
+        state = np.append(laser_state, self.robot_states)
 
         rospy.wait_for_service("/gazebo/unpause_physics")
         try:
@@ -267,6 +271,7 @@ class GazeboEnv:
         return state, reward, done, target
 
     def reset(self):
+        self.robot_states = deque(maxlen=self.len_history)
 
         # Resets the state of the environment and returns an initial observation.
         rospy.wait_for_service("/gazebo/reset_world")
@@ -350,16 +355,15 @@ class GazeboEnv:
             theta = np.pi - theta
 
         robot_state = [distance, theta, 0.0, 0.0]
-        state = np.append(laser_state, robot_state)
+        for _ in range(self.len_history):
+            self.robot_states.append(robot_state)
+        state = np.append(laser_state, self.robot_states)
         return state
 
     def change(self):
         self.TIME_DELTA = np.random.uniform(0.1, 1)
         self.SENSOR_DELAY = np.random.uniform(0, 0.8)
         self.ACTION_NOISE = np.random.uniform(0.8, 1.2, 2)
-        self.TIME_DELTA = 1
-        # self.SENSOR_DELAY = 0.01
-        # self.ACTION_NOISE = np.array([1,1])
         print(self.TIME_DELTA, self.SENSOR_DELAY, self.ACTION_NOISE)
 
     def change_goal(self):

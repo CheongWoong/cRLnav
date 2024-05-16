@@ -54,6 +54,7 @@ file_name = "TD3_velodyne"  # name of the file to load the policy from
 environment_dim = 20
 robot_dim = 4
 env = GazeboEnv("multi_robot_scenario.launch", environment_dim)
+robot_dim *= env.len_history
 time.sleep(5)
 torch.manual_seed(seed)
 np.random.seed(seed)
