@@ -7,10 +7,11 @@ from os import path
 
 import numpy as np
 import rospy
+import sensor_msgs.point_cloud2 as pc2
 from gazebo_msgs.msg import ModelState
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import PointCloud2
 from squaternion import Quaternion
 from std_srvs.srv import Empty
 from visualization_msgs.msg import Marker
@@ -112,7 +113,7 @@ class GazeboEnv:
         print("Gazebo launched!")
 
         # Set up the ROS publishers and subscribers
-        self.vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
+        self.vel_pub = rospy.Publisher("/r1/cmd_vel", Twist, queue_size=1)
         self.set_state = rospy.Publisher(
             "gazebo/set_model_state", ModelState, queue_size=10
         )
@@ -122,27 +123,30 @@ class GazeboEnv:
         self.publisher = rospy.Publisher("goal_point", MarkerArray, queue_size=3)
         self.publisher2 = rospy.Publisher("linear_velocity", MarkerArray, queue_size=1)
         self.publisher3 = rospy.Publisher("angular_velocity", MarkerArray, queue_size=1)
-        self.laser_scan = rospy.Subscriber(
-            "/scan", LaserScan, self.laser_scan_callback, queue_size=1
+        self.velodyne = rospy.Subscriber(
+            "/velodyne_points", PointCloud2, self.velodyne_callback, queue_size=1
         )
         self.odom = rospy.Subscriber(
-            "/odom", Odometry, self.odom_callback, queue_size=1
+            "/r1/odom", Odometry, self.odom_callback, queue_size=1
         )
 
-    def laser_scan_callback(self, laser_data):
-        laser_left = np.array(laser_data.ranges[540:720])
-        laser_right = np.array(laser_data.ranges[0:180])
+    # Read velodyne pointcloud and turn it into distance data, then select the minimum value for each angle
+    # range as state representation
+    def velodyne_callback(self, v):
+        data = list(pc2.read_points(v, skip_nans=False, field_names=("x", "y", "z")))
+        self.velodyne_data = np.ones(self.environment_dim) * 10
+        for i in range(len(data)):
+            if data[i][2] > -0.2:
+                dot = data[i][0] * 1 + data[i][1] * 0
+                mag1 = math.sqrt(math.pow(data[i][0], 2) + math.pow(data[i][1], 2))
+                mag2 = math.sqrt(math.pow(1, 2) + math.pow(0, 2))
+                beta = math.acos(dot / (mag1 * mag2)) * np.sign(data[i][1])
+                dist = math.sqrt(data[i][0] ** 2 + data[i][1] ** 2 + data[i][2] ** 2)
 
-        laser_state = np.append(laser_left, laser_right)
-        laser_state = np.clip(laser_state, 0, 10)
-
-        step_size = len(laser_state) // self.environment_dim
-        laser_state = np.array(
-            [min(laser_state[i*step_size:(i+1)*step_size]) for i in range(self.environment_dim)]
-        )
-
-        # laser_state = laser_state[::-1]
-        self.laser_scan_data = laser_state
+                for j in range(len(self.gaps)):
+                    if self.gaps[j][0] <= beta < self.gaps[j][1]:
+                        self.velodyne_data[j] = min(self.velodyne_data[j], dist)
+                        break
 
     def odom_callback(self, od_data):
         self.last_odom = od_data
@@ -351,9 +355,10 @@ class GazeboEnv:
         return state
 
     def change(self):
-        self.TIME_DELTA = np.random.uniform(0.1, 0.4)
+        self.TIME_DELTA = np.random.uniform(0.1, 1)
         self.SENSOR_DELAY = np.random.uniform(0, 0.5)
         self.ACTION_NOISE = np.random.uniform(0.8, 1.2, 2)
+        print(self.TIME_DELTA, self.SENSOR_DELAY, self.ACTION_NOISE)
 
     def change_goal(self):
         # Place a new goal and check if its location is not on one of the obstacles
