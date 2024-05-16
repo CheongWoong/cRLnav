@@ -74,7 +74,7 @@ class GazeboEnv:
 
         self.upper = 5.0
         self.lower = -5.0
-        self.laser_scan_data = np.ones(self.environment_dim) * 10
+        self.velodyne_data = np.ones(self.environment_dim) * 10
         self.last_odom = None
         self.change()
 
@@ -157,9 +157,8 @@ class GazeboEnv:
 
         # Publish the robot action
         vel_cmd = Twist()
-        action *= self.ACTION_NOISE
-        vel_cmd.linear.x = action[0]
-        vel_cmd.angular.z = action[1]
+        vel_cmd.linear.x = action[0]*self.ACTION_NOISE[0]
+        vel_cmd.angular.z = action[1]*self.ACTION_NOISE[1]
         self.vel_pub.publish(vel_cmd)
         self.publish_markers(action)
 
@@ -182,9 +181,9 @@ class GazeboEnv:
             print("/gazebo/pause_physics service call failed")
 
         # read velodyne laser state
-        # done, collision, min_laser = self.observe_collision(self.laser_scan_data)
+        # done, collision, min_laser = self.observe_collision(self.velodyne_data)
         v_state = []
-        v_state[:] = self.laser_scan_data[:]
+        v_state[:] = self.velodyne_data[:]
         laser_state = [v_state]
 
         # Calculate robot heading from odometry data
@@ -248,7 +247,7 @@ class GazeboEnv:
             print("/gazebo/pause_physics service call failed")
         
         # read velodyne laser state
-        done, collision, min_laser = self.observe_collision(self.laser_scan_data)
+        done, collision, min_laser = self.observe_collision(self.velodyne_data)
 
         # Calculate robot heading from odometry data
         self.odom_x = self.last_odom.pose.pose.position.x
@@ -321,7 +320,7 @@ class GazeboEnv:
         except (rospy.ServiceException) as e:
             print("/gazebo/pause_physics service call failed")
         v_state = []
-        v_state[:] = self.laser_scan_data[:]
+        v_state[:] = self.velodyne_data[:]
         laser_state = [v_state]
 
         distance = np.linalg.norm(
@@ -356,8 +355,11 @@ class GazeboEnv:
 
     def change(self):
         self.TIME_DELTA = np.random.uniform(0.1, 1)
-        self.SENSOR_DELAY = np.random.uniform(0, 0.5)
+        self.SENSOR_DELAY = np.random.uniform(0, 0.8)
         self.ACTION_NOISE = np.random.uniform(0.8, 1.2, 2)
+        self.TIME_DELTA = 1
+        # self.SENSOR_DELAY = 0.01
+        # self.ACTION_NOISE = np.array([1,1])
         print(self.TIME_DELTA, self.SENSOR_DELAY, self.ACTION_NOISE)
 
     def change_goal(self):
