@@ -77,16 +77,14 @@ while True:
 
     # Update action to fall in range [0,1] for linear velocity and [-1,1] for angular velocity
     a_in = [(action[0] + 1) / 2, action[1]]
+
     # print(np.array(state[:-4]))
     # print(np.array(state[-4:]))
     # print(a_in)
     # print()
-    # a_in[1] *= -1
-    # a_in = np.clip(a_in, -0.5, 0.5)
-    # a_in[0] = 0.7 if episode_timesteps % 2 == 0 else 0
-    # a_in[1] = 0
+
     next_state, reward, done, target = env.step(a_in)
-    done = 1 if episode_timesteps + 1 == max_time/env.TIME_DELTA else int(done)
+    done = 1 if episode_timesteps + 1 >= max_time/env.TIME_DELTA else int(done)
 
     # On termination of episode
     if done:
