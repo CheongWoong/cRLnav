@@ -487,4 +487,4 @@ class GazeboEnv:
             return -100.0
         else:
             r3 = lambda x: 1 - x if x < 1 else 0.0
-            return action[0] - abs(action[1]) - r3(min_laser)
+            return (action[0] / 2 - abs(action[1]) / 2 - r3(min_laser) / 2)*(self.TIME_DELTA/0.1)
