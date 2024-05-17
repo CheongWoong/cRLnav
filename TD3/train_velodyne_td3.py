@@ -307,7 +307,7 @@ while timestep < max_timesteps:
                 evaluate(network=network, epoch=epoch, eval_episodes=eval_ep)
             )
             network.save(f"{file_name}", directory="./pytorch_models")
-            if epoch >= 70:
+            if epoch >= 50:
                 network.save(f"{file_name}_epoch_{epoch}", directory="./pytorch_models")
             np.save("./results/%s" % (file_name), evaluations)
             epoch += 1
