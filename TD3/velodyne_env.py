@@ -203,7 +203,7 @@ class GazeboEnv:
 
         self.odom_x *= np.random.normal(1, 0.02)
         self.odom_y *= np.random.normal(1, 0.02)
-        angle *= np.random.normal(1, 0.02)
+        angle += (np.random.normal(1, 0.01)*np.pi)
 
         # Calculate distance to the goal from the robot
         distance = np.linalg.norm(
