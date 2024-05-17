@@ -471,16 +471,7 @@ class GazeboEnv:
         markerArray3.markers.append(marker3)
         self.publisher3.publish(markerArray3)
 
-    @staticmethod
-    def observe_collision(laser_data):
-        # Detect a collision from laser data
-        min_laser = min(laser_data)
-        if min_laser < COLLISION_DIST:
-            return True, True, min_laser
-        return False, False, min_laser
-
-    @staticmethod
-    def get_reward(target, collision, action, min_laser):
+    def get_reward(self, target, collision, action, min_laser):
         if target:
             return 100.0
         elif collision:
@@ -488,3 +479,11 @@ class GazeboEnv:
         else:
             r3 = lambda x: 1 - x if x < 1 else 0.0
             return (action[0] / 2 - abs(action[1]) / 2 - r3(min_laser) / 2)*(self.TIME_DELTA/0.1)
+
+    @staticmethod
+    def observe_collision(laser_data):
+        # Detect a collision from laser data
+        min_laser = min(laser_data)
+        if min_laser < COLLISION_DIST:
+            return True, True, min_laser
+        return False, False, min_laser
