@@ -19,7 +19,7 @@ from visualization_msgs.msg import MarkerArray
 
 from collections import deque
 
-GOAL_REACHED_DIST = 0.1
+GOAL_REACHED_DIST = 0.3
 COLLISION_DIST = 0.35
 
 
@@ -201,9 +201,9 @@ class GazeboEnv:
         euler = quaternion.to_euler(degrees=False)
         angle = round(euler[2], 4)
 
-        self.odom_x *= np.random.normal(1, 0.05)
-        self.odom_y *= np.random.normal(1, 0.05)
-        angle *= np.random.normal(1, 0.05)
+        self.odom_x *= np.random.normal(1, 0.02)
+        self.odom_y *= np.random.normal(1, 0.02)
+        angle *= np.random.normal(1, 0.02)
 
         # Calculate distance to the goal from the robot
         distance = np.linalg.norm(
