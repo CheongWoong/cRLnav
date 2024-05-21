@@ -230,7 +230,7 @@ expl_decay_steps = (
 )
 expl_min = 0.1  # Exploration noise after the decay in range [0...expl_noise]
 batch_size = 40  # Size of the mini-batch
-discount = 0.99999  # Discount factor to calculate the discounted future reward (should be close to 1)
+discount = 0.99  # Discount factor to calculate the discounted future reward (should be close to 1)
 tau = 0.005  # Soft target update variable (should be close to 0)
 policy_noise = 0.2  # Added noise for exploration
 noise_clip = 0.5  # Maximum clamping values of the noise
@@ -248,7 +248,7 @@ if save_model and not os.path.exists("./pytorch_models"):
     os.makedirs("./pytorch_models")
 
 # Create the training environment
-environment_dim = 20
+environment_dim = 0
 robot_dim = 4
 env = GazeboEnv("multi_robot_scenario.launch", environment_dim)
 robot_dim *= env.len_history
@@ -331,19 +331,19 @@ while timestep < max_timesteps:
     # If the robot is facing an obstacle, randomly force it to take a consistent random action.
     # This is done to increase exploration in situations near obstacles.
     # Training can also be performed without it
-    if random_near_obstacle:
-        if (
-            np.random.uniform(0, 1) > 0.85
-            and min(state[4:-8]) < 0.6
-            and count_rand_actions < 1
-        ):
-            count_rand_actions = np.random.randint(8, 15)
-            random_action = np.random.uniform(-1, 1, 2)
+    # if random_near_obstacle:
+    #     if (
+    #         np.random.uniform(0, 1) > 0.85
+    #         and min(state[4:-8]) < 0.6
+    #         and count_rand_actions < 1
+    #     ):
+    #         count_rand_actions = np.random.randint(8, 15)
+    #         random_action = np.random.uniform(-1, 1, 2)
 
-        if count_rand_actions > 0:
-            count_rand_actions -= 1
-            action = random_action
-            action[0] = -1
+    #     if count_rand_actions > 0:
+    #         count_rand_actions -= 1
+    #         action = random_action
+    #         action[0] = -1
 
     # Update action to fall in range [0,1] for linear velocity and [-1,1] for angular velocity
     a_in = [(action[0] + 1) / 2, action[1]]
