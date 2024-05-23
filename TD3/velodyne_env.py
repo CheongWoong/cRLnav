@@ -446,8 +446,8 @@ class GazeboEnv:
             return -100.0
         else:
             r1 = action[0]
-            r2 = abs(action[1])
-            r3 = 1 - min_laser if min_laser < 1 else 0.0
+            r2 = -abs(action[1])
+            r3 = -(1 - min_laser) if min_laser < 1 else 0.0
             v_diff = abs(self.prev_action[0] - action[0])
             w_diff = abs(self.prev_action[1] - action[1])
             self.prev_action = action

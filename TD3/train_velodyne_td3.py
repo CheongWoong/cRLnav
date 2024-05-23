@@ -176,7 +176,7 @@ class TD3(object):
                 # (essentially perform gradient ascent)
                 actor_grad, _ = self.critic(state, self.actor(state))
                 actor_grad = -actor_grad.mean()
-                avg_actor_loss += actor_grad
+                av_actor_loss += actor_grad
                 self.actor_optimizer.zero_grad()
                 actor_grad.backward()
                 self.actor_optimizer.step()
@@ -201,10 +201,10 @@ class TD3(object):
             av_loss += loss
         self.iter_count += 1
         # Write new values for tensorboard
-        self.writer.add_scalar("loss", av_loss / iterations, self.iter_count)
-        self.writer.add_scalar("actor_loss", av_actor_loss / iterations, self.iter_count)
-        self.writer.add_scalar("Av. Q", av_Q / iterations, self.iter_count)
-        self.writer.add_scalar("Max. Q", max_Q, self.iter_count)
+        self.writer.add_scalar("charts/loss", av_loss / iterations, self.iter_count)
+        self.writer.add_scalar("charts/actor_loss", av_actor_loss / iterations, self.iter_count)
+        self.writer.add_scalar("charts/Av. Q", av_Q / iterations, self.iter_count)
+        self.writer.add_scalar("charts/Max. Q", max_Q, self.iter_count)
 
     def save(self, filename, directory):
         torch.save(self.actor.state_dict(), "%s/%s_actor.pth" % (directory, filename))
@@ -222,13 +222,13 @@ class TD3(object):
 # Set the parameters for the implementation
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda or cpu
 seed = 0  # Random seed number
-eval_freq = 2500  # After how many steps to perform the evaluation
+eval_freq = 5e3  # After how many steps to perform the evaluation
 max_ep = 250  # maximum number of steps per episode
 eval_ep = 10  # number of episodes for evaluation
-max_timesteps = 1000000  # Maximum number of steps to perform
+max_timesteps = 5e6  # Maximum number of steps to perform
 expl_noise = 1  # Initial exploration noise starting value in range [expl_min ... 1]
 expl_decay_steps = (
-    250000  # Number of steps over which the initial exploration noise will decay over
+    500000  # Number of steps over which the initial exploration noise will decay over
 )
 expl_min = 0.1  # Exploration noise after the decay in range [0...expl_noise]
 batch_size = 40  # Size of the mini-batch
@@ -300,6 +300,7 @@ while timestep < max_timesteps:
                 noise_clip,
                 policy_freq,
             )
+            network.writer.add_scalar("charts/episode_reward", episode_reward, timestep)
 
         if timesteps_since_eval >= eval_freq:
             print("Validating")
