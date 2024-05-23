@@ -1,27 +1,27 @@
 import time
 
+import random
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from rosbot_env import GazeboEnv
+from velodyne_env import GazeboEnv
 
 
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim):
-        super(Actor, self).__init__()
+        super().__init__()
 
-        self.layer_1 = nn.Linear(state_dim, 800)
-        self.layer_2 = nn.Linear(800, 600)
-        self.layer_3 = nn.Linear(600, action_dim)
-        self.tanh = nn.Tanh()
+        self.layer_1 = nn.Linear(state_dim, 256)
+        self.layer_2 = nn.Linear(256, 256)
+        self.layer_3 = nn.Linear(256, action_dim)
 
-    def forward(self, s):
-        s = F.relu(self.layer_1(s))
-        s = F.relu(self.layer_2(s))
-        a = self.tanh(self.layer_3(s))
-        return a
+    def forward(self, x):
+        x = F.relu(self.layer_1(x))
+        x = F.relu(self.layer_2(x))
+        x = torch.tanh(self.layer_3(x))
+        return x
 
 
 # TD3 network
@@ -45,18 +45,20 @@ class TD3(object):
 # Set the parameters for the implementation
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # cuda or cpu
 seed = 0  # Random seed number
-max_ep = 500  # maximum number of steps per episode
-max_time = 50
-file_name = "TD3_rosbot"  # name of the file to load the policy from
+max_ep = 250  # maximum number of steps per episode
+file_name = "TD3_velodyne"  # name of the file to load the policy from
 
 
 # Create the testing environment
 environment_dim = 20
 robot_dim = 4
-env = GazeboEnv("multi_robot_scenario_rosbot.launch", environment_dim)
+env = GazeboEnv("multi_robot_scenario.launch", environment_dim)
 time.sleep(5)
-torch.manual_seed(seed)
+
+random.seed(seed)
 np.random.seed(seed)
+torch.manual_seed(seed)
+
 state_dim = environment_dim + robot_dim
 action_dim = 2
 
@@ -77,14 +79,8 @@ while True:
 
     # Update action to fall in range [0,1] for linear velocity and [-1,1] for angular velocity
     a_in = [(action[0] + 1) / 2, action[1]]
-    print(np.array(state[:-4]))
-    print(np.array(state[-4:]))
-    print(a_in)
-    # a_in[1] *= -1
-    a_in[0] = np.clip(a_in[0], -0.3, 0.3)
-    print()
     next_state, reward, done, target = env.step(a_in)
-    done = 1 if episode_timesteps + 1 == max_time/env.TIME_DELTA else int(done)
+    done = 1 if episode_timesteps + 1 == max_ep else int(done)
 
     # On termination of episode
     if done:

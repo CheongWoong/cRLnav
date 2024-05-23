@@ -1,6 +1,5 @@
 import time
 
-import random
 import numpy as np
 import torch
 import torch.nn as nn
@@ -11,17 +10,18 @@ from velodyne_env import GazeboEnv
 
 class Actor(nn.Module):
     def __init__(self, state_dim, action_dim):
-        super().__init__()
+        super(Actor, self).__init__()
 
-        self.layer_1 = nn.Linear(state_dim, 256)
-        self.layer_2 = nn.Linear(256, 256)
-        self.layer_3 = nn.Linear(256, action_dim)
+        self.layer_1 = nn.Linear(state_dim, 800)
+        self.layer_2 = nn.Linear(800, 600)
+        self.layer_3 = nn.Linear(600, action_dim)
+        self.tanh = nn.Tanh()
 
-    def forward(self, x):
-        x = F.relu(self.layer_1(x))
-        x = F.relu(self.layer_2(x))
-        x = torch.tanh(self.layer_3(x))
-        return x
+    def forward(self, s):
+        s = F.relu(self.layer_1(s))
+        s = F.relu(self.layer_2(s))
+        a = self.tanh(self.layer_3(s))
+        return a
 
 
 # TD3 network
@@ -54,11 +54,8 @@ environment_dim = 20
 robot_dim = 4
 env = GazeboEnv("multi_robot_scenario.launch", environment_dim)
 time.sleep(5)
-
-random.seed(seed)
-np.random.seed(seed)
 torch.manual_seed(seed)
-
+np.random.seed(seed)
 state_dim = environment_dim + robot_dim
 action_dim = 2
 

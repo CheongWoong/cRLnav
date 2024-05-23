@@ -17,8 +17,6 @@ from std_srvs.srv import Empty
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
-from collections import deque
-
 GOAL_REACHED_DIST = 0.3
 COLLISION_DIST = 0.35
 TIME_DELTA = 0.2
@@ -67,7 +65,7 @@ def check_pos(x, y):
 class GazeboEnv:
     """Superclass for all Gazebo environments."""
 
-    def __init__(self, launchfile, environment_dim, sim2real=True):
+    def __init__(self, launchfile, environment_dim, sim2real=False):
         self.sim2real = sim2real
 
         self.environment_dim = environment_dim
@@ -203,12 +201,6 @@ class GazeboEnv:
         euler = quaternion.to_euler(degrees=False)
         angle = round(euler[2], 4)
 
-        # sensor noise (gaussian)
-        if self.sim2real:
-            self.odom_x += np.random.normal(0, 0.02)
-            self.odom_y += np.random.normal(0, 0.02)
-            angle += (np.random.normal(0, 0.01)*np.pi)
-
         # Calculate distance to the goal from the robot
         distance = np.linalg.norm(
             [self.odom_x - self.goal_x, self.odom_y - self.goal_y]
@@ -243,7 +235,7 @@ class GazeboEnv:
         state = np.append(laser_state, robot_state)
         reward = self.get_reward(target, collision, action, min_laser)
         return state, reward, done, target
-
+        
     def reset(self):
         if self.sim2real:
             self.ACTION_NOISE = np.random.uniform(0.8, 1.2, 2)
@@ -445,12 +437,23 @@ class GazeboEnv:
             return True, True, min_laser
         return False, False, min_laser
 
-    @staticmethod
-    def get_reward(target, collision, action, min_laser):
+    def get_reward(self, target, collision, action, min_laser):
         if target:
             return 100.0
         elif collision:
             return -100.0
         else:
-            r3 = lambda x: 1 - x if x < 1 else 0.0
-            return action[0] - abs(action[1]) - r3(min_laser)
+            r1 = action[0]
+            r2 = abs(action[1])
+            r3 = 1 - min_laser if min_laser < 1 else 0.0
+            v_diff = abs(self.prev_action[0] - action[0])
+            w_diff = abs(self.prev_action[1] - action[1])
+            self.prev_action = action
+            r4 = v_diff + w_diff
+
+            w1 = 1.0
+            w2 = 1.0
+            w3 = 1.0
+            w4 = 0.0
+
+            return w1*r1 + w2*r2 + w3*r3 + w4*r4
