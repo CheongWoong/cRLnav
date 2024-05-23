@@ -320,6 +320,8 @@ class GazeboEnv:
             theta = -np.pi - theta
             theta = np.pi - theta
 
+        self.prev_action = [0.0, 0.0]
+
         robot_state = [distance, theta, 0.0, 0.0]
         state = np.append(laser_state, robot_state)
         return state
