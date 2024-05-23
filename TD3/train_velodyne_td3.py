@@ -126,6 +126,7 @@ class TD3(object):
         av_Q = 0
         max_Q = -inf
         av_loss = 0
+        av_actor_loss = 0
         for it in range(iterations):
             # sample a batch from the replay buffer
             (
@@ -175,6 +176,7 @@ class TD3(object):
                 # (essentially perform gradient ascent)
                 actor_grad, _ = self.critic(state, self.actor(state))
                 actor_grad = -actor_grad.mean()
+                avg_actor_loss += actor_grad
                 self.actor_optimizer.zero_grad()
                 actor_grad.backward()
                 self.actor_optimizer.step()
@@ -200,6 +202,7 @@ class TD3(object):
         self.iter_count += 1
         # Write new values for tensorboard
         self.writer.add_scalar("loss", av_loss / iterations, self.iter_count)
+        self.writer.add_scalar("actor_loss", av_actor_loss / iterations, self.iter_count)
         self.writer.add_scalar("Av. Q", av_Q / iterations, self.iter_count)
         self.writer.add_scalar("Max. Q", max_Q, self.iter_count)
 
