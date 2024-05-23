@@ -163,7 +163,7 @@ class TD3(object):
             # Get the Q values of the basis networks with the current parameters
             current_Q1, current_Q2 = self.critic(state, action)
 
-            # Calculate the loss between the current Q value and thesteer_drive_controller target Q value
+            # Calculate the loss between the current Q value and the target Q value
             loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
 
             # Perform the gradient descent
@@ -176,7 +176,6 @@ class TD3(object):
                 # (essentially perform gradient ascent)
                 actor_grad, _ = self.critic(state, self.actor(state))
                 actor_grad = -actor_grad.mean()
-                av_actor_loss += actor_grad
                 self.actor_optimizer.zero_grad()
                 actor_grad.backward()
                 self.actor_optimizer.step()
@@ -197,6 +196,7 @@ class TD3(object):
                     target_param.data.copy_(
                         tau * param.data + (1 - tau) * target_param.data
                     )
+                av_actor_loss += actor_grad
 
             av_loss += loss
         self.iter_count += 1
@@ -308,7 +308,7 @@ while timestep < max_timesteps:
             evaluations.append(
                 evaluate(network=network, epoch=epoch, eval_episodes=eval_ep)
             )
-            network.save(f"{file_name}", directory="./pytorch_models")
+            network.save(file_name, directory="./pytorch_models")
             if epoch >= 50:
                 network.save(f"{file_name}_epoch_{epoch}", directory="./pytorch_models")
             np.save("./results/%s" % (file_name), evaluations)

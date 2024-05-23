@@ -65,7 +65,9 @@ def check_pos(x, y):
 class GazeboEnv:
     """Superclass for all Gazebo environments."""
 
-    def __init__(self, launchfile, environment_dim):
+    def __init__(self, launchfile, environment_dim, sim2real=False):
+        self.sim2real = sim2real
+
         self.environment_dim = environment_dim
         self.odom_x = 0
         self.odom_y = 0
@@ -159,6 +161,9 @@ class GazeboEnv:
         vel_cmd = Twist()
         vel_cmd.linear.x = action[0]
         vel_cmd.angular.z = action[1]
+        if self.sim2real:
+            vel_cmd.linear.x *= self.ACTION_NOISE[0]*np.random.normal(1, 0.02)
+            vel_cmd.angular.z *= self.ACTION_NOISE[1]*np.random.normal(1, 0.02)
         self.vel_pub.publish(vel_cmd)
         self.publish_markers(action)
 
@@ -230,8 +235,10 @@ class GazeboEnv:
         state = np.append(laser_state, robot_state)
         reward = self.get_reward(target, collision, action, min_laser)
         return state, reward, done, target
-
+        
     def reset(self):
+        if self.sim2real:
+            self.ACTION_NOISE = np.random.uniform(0.8, 1.2, 2)
 
         # Resets the state of the environment and returns an initial observation.
         rospy.wait_for_service("/gazebo/reset_world")
@@ -312,6 +319,8 @@ class GazeboEnv:
         if theta < -np.pi:
             theta = -np.pi - theta
             theta = np.pi - theta
+
+        self.prev_action = [0.0, 0.0]
 
         robot_state = [distance, theta, 0.0, 0.0]
         state = np.append(laser_state, robot_state)
@@ -430,12 +439,23 @@ class GazeboEnv:
             return True, True, min_laser
         return False, False, min_laser
 
-    @staticmethod
-    def get_reward(target, collision, action, min_laser):
+    def get_reward(self, target, collision, action, min_laser):
         if target:
             return 100.0
         elif collision:
             return -100.0
         else:
-            r3 = lambda x: 1 - x if x < 1 else 0.0
-            return action[0] / 2 - abs(action[1]) / 2 - r3(min_laser) / 2
+            r1 = action[0]
+            r2 = -abs(action[1])
+            r3 = -(1 - min_laser) if min_laser < 1 else 0.0
+            v_diff = abs(self.prev_action[0] - action[0])
+            w_diff = abs(self.prev_action[1] - action[1])
+            self.prev_action = action
+            r4 = v_diff + w_diff
+
+            w1 = 1.0
+            w2 = 1.0
+            w3 = 1.0
+            w4 = 0.0
+
+            return w1*r1 + w2*r2 + w3*r3 + w4*r4
