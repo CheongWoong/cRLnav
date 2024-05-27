@@ -11,7 +11,7 @@ import sensor_msgs.point_cloud2 as pc2
 from gazebo_msgs.msg import ModelState
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, LaserScan
 from squaternion import Quaternion
 from std_srvs.srv import Empty
 from visualization_msgs.msg import Marker
@@ -20,8 +20,6 @@ from visualization_msgs.msg import MarkerArray
 GOAL_REACHED_DIST = 0.3
 COLLISION_DIST = 0.35
 TIME_DELTA = 0.2
-ACCELERATION_LIMIT = np.array([1.0, 1.0]) # m/s, rad/s
-ACCELERATION_LIMIT *= TIME_DELTA
 
 
 # Check if the random goal position is located on an obstacle and do not accept it if it is
@@ -68,8 +66,6 @@ class GazeboEnv:
     """Superclass for all Gazebo environments."""
 
     def __init__(self, launchfile, environment_dim):
-        self.invalid_action_clipping = True
-
         self.environment_dim = environment_dim
         self.odom_x = 0
         self.odom_y = 0
@@ -117,7 +113,7 @@ class GazeboEnv:
         print("Gazebo launched!")
 
         # Set up the ROS publishers and subscribers
-        self.vel_pub = rospy.Publisher("/r1/cmd_vel", Twist, queue_size=1)
+        self.vel_pub = rospy.Publisher("/cmd_vel", Twist, queue_size=1)
         self.set_state = rospy.Publisher(
             "gazebo/set_model_state", ModelState, queue_size=10
         )
@@ -128,29 +124,26 @@ class GazeboEnv:
         self.publisher2 = rospy.Publisher("linear_velocity", MarkerArray, queue_size=1)
         self.publisher3 = rospy.Publisher("angular_velocity", MarkerArray, queue_size=1)
         self.velodyne = rospy.Subscriber(
-            "/velodyne_points", PointCloud2, self.velodyne_callback, queue_size=1
+            "/scan", LaserScan, self.laser_scan_callback, queue_size=1
         )
         self.odom = rospy.Subscriber(
-            "/r1/odom", Odometry, self.odom_callback, queue_size=1
+            "/odom", Odometry, self.odom_callback, queue_size=1
         )
 
-    # Read velodyne pointcloud and turn it into distance data, then select the minimum value for each angle
-    # range as state representation
-    def velodyne_callback(self, v):
-        data = list(pc2.read_points(v, skip_nans=False, field_names=("x", "y", "z")))
-        self.velodyne_data = np.ones(self.environment_dim) * 10
-        for i in range(len(data)):
-            if data[i][2] > -0.2:
-                dot = data[i][0] * 1 + data[i][1] * 0
-                mag1 = math.sqrt(math.pow(data[i][0], 2) + math.pow(data[i][1], 2))
-                mag2 = math.sqrt(math.pow(1, 2) + math.pow(0, 2))
-                beta = math.acos(dot / (mag1 * mag2)) * np.sign(data[i][1])
-                dist = math.sqrt(data[i][0] ** 2 + data[i][1] ** 2 + data[i][2] ** 2)
+    def laser_scan_callback(self, laser_data):
+        laser_left = np.array(laser_data.ranges[540:720])
+        laser_right = np.array(laser_data.ranges[0:180])
 
-                for j in range(len(self.gaps)):
-                    if self.gaps[j][0] <= beta < self.gaps[j][1]:
-                        self.velodyne_data[j] = min(self.velodyne_data[j], dist)
-                        break
+        laser_state = np.append(laser_left, laser_right)
+        laser_state = np.clip(laser_state, 0, 10)
+
+        step_size = len(laser_state) // self.environment_dim
+        laser_state = np.array(
+            [min(laser_state[i*step_size:(i+1)*step_size]) for i in range(self.environment_dim)]
+        )
+
+        # laser_state = laser_state[::-1]
+        self.velodyne_data = laser_state
 
     def odom_callback(self, od_data):
         self.last_odom = od_data
@@ -161,15 +154,8 @@ class GazeboEnv:
 
         # Publish the robot action
         vel_cmd = Twist()
-        ###############################################################
-        # invalid action masking (clipping) with acceleration limit
-        if self.invalid_action_clipping:
-            action_diff = action - self.prev_action
-            action_diff = np.clip(action_diff, -ACCELERATION_LIMIT, ACCELERATION_LIMIT)
-            action = self.prev_action + action_diff
-        ###############################################################
         vel_cmd.linear.x = action[0]
-        vel_cmd.angular.z = action[1]
+        vel_cmd.angular.z = -action[1]
         self.vel_pub.publish(vel_cmd)
         self.publish_markers(action)
 
@@ -240,7 +226,6 @@ class GazeboEnv:
         robot_state = [distance, theta, action[0], action[1]]
         state = np.append(laser_state, robot_state)
         reward = self.get_reward(target, collision, action, min_laser)
-        self.prev_action = action
         return state, reward, done, target
 
     def reset(self):
@@ -324,8 +309,6 @@ class GazeboEnv:
         if theta < -np.pi:
             theta = -np.pi - theta
             theta = np.pi - theta
-
-        self.prev_action = np.zeros(2)
 
         robot_state = [distance, theta, 0.0, 0.0]
         state = np.append(laser_state, robot_state)
