@@ -62,7 +62,7 @@ action_dim = 2
 # Create the network
 network = TD3(state_dim, action_dim)
 try:
-    network.load(file_name, "./backups/5hz/pytorch_models")
+    network.load(file_name, "./backups/pytorch_models")
 except:
     raise ValueError("Could not load the stored model parameters")
 
