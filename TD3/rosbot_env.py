@@ -159,11 +159,17 @@ class GazeboEnv:
         # Publish the robot action
         vel_cmd = Twist()
         ###############################################################
-        # invalid action masking (clipping) with acceleration limit
+        # invalid action masking (clipping) with acceleration limit and linear velocity near the goal
         if self.invalid_action_clipping:
-            action_diff = action - self.prev_action
+            prev_action = self.prev_state[-2:]
+            action_diff = action - prev_action
             action_diff = np.clip(action_diff, -ACCELERATION_LIMIT, ACCELERATION_LIMIT)
-            action = self.prev_action + action_diff
+            action = prev_action + action_diff
+
+            ### Maybe do this only at inference time
+            # dist = self.prev_state[0]
+            # lin_vel_limit = dist / 2
+            # action[0] = np.clip(action[0], 0, lin_vel_limit)
         ###############################################################
         vel_cmd.linear.x = action[0]
         vel_cmd.angular.z = -action[1]
@@ -237,7 +243,7 @@ class GazeboEnv:
         robot_state = [distance, theta, action[0], action[1]]
         state = np.append(laser_state, robot_state)
         reward = self.get_reward(target, collision, action, min_laser)
-        self.prev_action = action
+        self.prev_state = np.array(robot_state)
         return state, reward, done, target
 
     def reset(self):
@@ -322,9 +328,8 @@ class GazeboEnv:
             theta = -np.pi - theta
             theta = np.pi - theta
 
-        self.prev_action = np.zeros(2)
-
         robot_state = [distance, theta, 0.0, 0.0]
+        self.prev_state = np.array(robot_state)
         state = np.append(laser_state, robot_state)
         return state
 
