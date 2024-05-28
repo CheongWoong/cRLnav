@@ -171,7 +171,7 @@ class GazeboEnv:
 
             ### Maybe do this only at inference time
             # dist = self.prev_state[0]
-            # lin_vel_limit = dist / 2
+            # lin_vel_limit = dist / 5
             # action[0] = np.clip(action[0], 0, lin_vel_limit)
         ###############################################################
         vel_cmd.linear.x = action[0]
