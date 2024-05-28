@@ -20,6 +20,8 @@ from visualization_msgs.msg import MarkerArray
 GOAL_REACHED_DIST = 0.3
 COLLISION_DIST = 0.35
 TIME_DELTA = 0.2
+ACCELERATION_LIMIT = np.array([1.0, 1.0]) # m/s, rad/s
+ACCELERATION_LIMIT *= TIME_DELTA
 
 
 # Check if the random goal position is located on an obstacle and do not accept it if it is
@@ -66,6 +68,8 @@ class GazeboEnv:
     """Superclass for all Gazebo environments."""
 
     def __init__(self, launchfile, environment_dim):
+        self.invalid_action_clipping = True
+
         self.environment_dim = environment_dim
         self.odom_x = 0
         self.odom_y = 0
@@ -154,6 +158,13 @@ class GazeboEnv:
 
         # Publish the robot action
         vel_cmd = Twist()
+        ###############################################################
+        # invalid action masking (clipping) with acceleration limit
+        if self.invalid_action_clipping:
+            action_diff = action - self.prev_action
+            action_diff = np.clip(action_diff, -ACCELERATION_LIMIT, ACCELERATION_LIMIT)
+            action = self.prev_action + action_diff
+        ###############################################################
         vel_cmd.linear.x = action[0]
         vel_cmd.angular.z = -action[1]
         self.vel_pub.publish(vel_cmd)
@@ -226,6 +237,7 @@ class GazeboEnv:
         robot_state = [distance, theta, action[0], action[1]]
         state = np.append(laser_state, robot_state)
         reward = self.get_reward(target, collision, action, min_laser)
+        self.prev_action = action
         return state, reward, done, target
 
     def reset(self):
@@ -309,6 +321,8 @@ class GazeboEnv:
         if theta < -np.pi:
             theta = -np.pi - theta
             theta = np.pi - theta
+
+        self.prev_action = np.zeros(2)
 
         robot_state = [distance, theta, 0.0, 0.0]
         state = np.append(laser_state, robot_state)
