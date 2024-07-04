@@ -1,3 +1,5 @@
+# additional reference: https://github.com/erlerobot/gym-gazebo/blob/master/gym_gazebo/envs/erlecopter/gazebo_erlecopter_hover.py
+
 import math
 import os
 import random
@@ -7,57 +9,27 @@ from os import path
 
 import numpy as np
 import rospy
-import sensor_msgs.point_cloud2 as pc2
 from gazebo_msgs.msg import ModelState
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import PointCloud2
 from squaternion import Quaternion
 from std_srvs.srv import Empty
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 
+from mavros_msgs.srv import CommandBool, CommandTOL, SetMode
+
 GOAL_REACHED_DIST = 0.3
 COLLISION_DIST = 0.35
 TIME_DELTA = 0.2
+ALTITUDE = 3.0
+ACCELERATION_LIMIT = np.array([1.0, 1.0, 1.0]) # m/s, rad/s, m/s
+ACCELERATION_LIMIT *= TIME_DELTA
 
 
 # Check if the random goal position is located on an obstacle and do not accept it if it is
 def check_pos(x, y):
     goal_ok = True
-
-    if -3.8 > x > -6.2 and 6.2 > y > 3.8:
-        goal_ok = False
-
-    if -1.3 > x > -2.7 and 4.7 > y > -0.2:
-        goal_ok = False
-
-    if -0.3 > x > -4.2 and 2.7 > y > 1.3:
-        goal_ok = False
-
-    if -0.8 > x > -4.2 and -2.3 > y > -4.2:
-        goal_ok = False
-
-    if -1.3 > x > -3.7 and -0.8 > y > -2.7:
-        goal_ok = False
-
-    if 4.2 > x > 0.8 and -1.8 > y > -3.2:
-        goal_ok = False
-
-    if 4 > x > 2.5 and 0.7 > y > -3.2:
-        goal_ok = False
-
-    if 6.2 > x > 3.8 and -3.3 > y > -4.2:
-        goal_ok = False
-
-    if 4.2 > x > 1.3 and 3.7 > y > 1.5:
-        goal_ok = False
-
-    if -3.0 > x > -7.2 and 0.5 > y > -1.5:
-        goal_ok = False
-
-    if x > 4.5 or x < -4.5 or y > 4.5 or y < -4.5:
-        goal_ok = False
 
     return goal_ok
 
@@ -65,8 +37,8 @@ def check_pos(x, y):
 class GazeboEnv:
     """Superclass for all Gazebo environments."""
 
-    def __init__(self, launchfile, environment_dim, sim2real=False):
-        self.sim2real = sim2real
+    def __init__(self, environment_dim):
+        self.invalid_action_clipping = True
 
         self.environment_dim = environment_dim
         self.odom_x = 0
@@ -77,11 +49,10 @@ class GazeboEnv:
 
         self.upper = 5.0
         self.lower = -5.0
-        self.velodyne_data = np.ones(self.environment_dim) * 10
         self.last_odom = None
 
         self.set_self_state = ModelState()
-        self.set_self_state.model_name = "r1"
+        self.set_self_state.model_name = "iris"
         self.set_self_state.pose.position.x = 0.0
         self.set_self_state.pose.position.y = 0.0
         self.set_self_state.pose.position.z = 0.0
@@ -90,32 +61,15 @@ class GazeboEnv:
         self.set_self_state.pose.orientation.z = 0.0
         self.set_self_state.pose.orientation.w = 1.0
 
-        self.gaps = [[-np.pi / 2 - 0.03, -np.pi / 2 + np.pi / self.environment_dim]]
-        for m in range(self.environment_dim - 1):
-            self.gaps.append(
-                [self.gaps[m][1], self.gaps[m][1] + np.pi / self.environment_dim]
-            )
-        self.gaps[-1][-1] += 0.03
-
         port = "11311"
-        subprocess.Popen(["roscore", "-p", port])
 
-        print("Roscore launched!")
+        # subprocess.Popen(["roslaunch", "-p", port, "px4", "mavros_posix_sitl.launch"])
+        # print("mavros_posix_sitl launched!")
 
-        # Launch the simulation with the given launchfile name
         rospy.init_node("gym", anonymous=True)
-        if launchfile.startswith("/"):
-            fullpath = launchfile
-        else:
-            fullpath = os.path.join(os.path.dirname(__file__), "assets", launchfile)
-        if not path.exists(fullpath):
-            raise IOError("File " + fullpath + " does not exist")
-
-        subprocess.Popen(["roslaunch", "-p", port, fullpath])
-        print("Gazebo launched!")
 
         # Set up the ROS publishers and subscribers
-        self.vel_pub = rospy.Publisher("/r1/cmd_vel", Twist, queue_size=1)
+        self.vel_pub = rospy.Publisher("/mavros/setpoint_velocity/cmd_vel_unstamped", Twist, queue_size=1)
         self.set_state = rospy.Publisher(
             "gazebo/set_model_state", ModelState, queue_size=10
         )
@@ -125,30 +79,51 @@ class GazeboEnv:
         self.publisher = rospy.Publisher("goal_point", MarkerArray, queue_size=3)
         self.publisher2 = rospy.Publisher("linear_velocity", MarkerArray, queue_size=1)
         self.publisher3 = rospy.Publisher("angular_velocity", MarkerArray, queue_size=1)
-        self.velodyne = rospy.Subscriber(
-            "/velodyne_points", PointCloud2, self.velodyne_callback, queue_size=1
-        )
         self.odom = rospy.Subscriber(
-            "/r1/odom", Odometry, self.odom_callback, queue_size=1
+            "/mavros/local_position/odom", Odometry, self.odom_callback, queue_size=1
         )
 
-    # Read velodyne pointcloud and turn it into distance data, then select the minimum value for each angle
-    # range as state representation
-    def velodyne_callback(self, v):
-        data = list(pc2.read_points(v, skip_nans=False, field_names=("x", "y", "z")))
-        self.velodyne_data = np.ones(self.environment_dim) * 10
-        for i in range(len(data)):
-            if data[i][2] > -0.2:
-                dot = data[i][0] * 1 + data[i][1] * 0
-                mag1 = math.sqrt(math.pow(data[i][0], 2) + math.pow(data[i][1], 2))
-                mag2 = math.sqrt(math.pow(1, 2) + math.pow(0, 2))
-                beta = math.acos(dot / (mag1 * mag2)) * np.sign(data[i][1])
-                dist = math.sqrt(data[i][0] ** 2 + data[i][1] ** 2 + data[i][2] ** 2)
+        self.mode_proxy = rospy.ServiceProxy('mavros/set_mode', SetMode)
+        self.arm_proxy = rospy.ServiceProxy('mavros/cmd/arming', CommandBool)
+        self.takeoff_proxy = rospy.ServiceProxy('mavros/cmd/takeoff', CommandTOL)
 
-                for j in range(len(self.gaps)):
-                    if self.gaps[j][0] <= beta < self.gaps[j][1]:
-                        self.velodyne_data[j] = min(self.velodyne_data[j], dist)
-                        break
+        countdown = 5
+        while countdown > 0:
+            print ("Taking off in in %ds"%countdown)
+            countdown -= 1
+            time.sleep(1)
+
+        # Set OFFBOARD mode
+        rospy.wait_for_service('mavros/set_mode')
+        try:
+            self.mode_proxy(0, 'OFFBOARD')
+        except (rospy.ServiceException) as e:
+            print ("mavros/set_mode service call failed: %s"%e)
+
+        # # Arm throttle
+        # print("Arming")
+        # rospy.wait_for_service('mavros/cmd/arming')
+        # try:
+        #     self.arm_proxy(True)
+        # except Exception as e:
+        #     print ("mavros/set_mode service call failed: %s"%e)
+        # time.sleep(3)
+
+        # # Takeoff
+        # print("Taking off...")
+        # rospy.wait_for_service('mavros/set_mode')
+        # try:
+        #     self.mode_proxy(0, 'AUTO.TAKEOFF')
+        # except Exception as e:
+        #     print ("mavros/set_mode service call failed: %s"%e)
+        # time.sleep(5)
+
+        # # Set OFFBOARD mode
+        # rospy.wait_for_service('mavros/set_mode')
+        # try:
+        #     self.mode_proxy(0, 'OFFBOARD')
+        # except (rospy.ServiceException) as e:
+        #     print ("mavros/set_mode service call failed: %s"%e)
 
     def odom_callback(self, od_data):
         self.last_odom = od_data
@@ -159,11 +134,22 @@ class GazeboEnv:
 
         # Publish the robot action
         vel_cmd = Twist()
+        ###############################################################
+        # invalid action masking (clipping) with acceleration limit and linear velocity near the goal
+        if self.invalid_action_clipping:
+            prev_action = self.prev_state[-3:]
+            action_diff = action - prev_action
+            action_diff = np.clip(action_diff, -ACCELERATION_LIMIT, ACCELERATION_LIMIT)
+            action = prev_action + action_diff
+
+            ### Maybe do this only at inference time
+            # dist = self.prev_state[0]
+            # lin_vel_limit = dist / 5
+            # action[0] = np.clip(action[0], 0, lin_vel_limit)
+        ###############################################################
         vel_cmd.linear.x = action[0]
         vel_cmd.angular.z = action[1]
-        if self.sim2real:
-            vel_cmd.linear.x *= self.ACTION_NOISE[0]*np.random.normal(1, 0.02)
-            vel_cmd.angular.z *= self.ACTION_NOISE[1]*np.random.normal(1, 0.02)
+        vel_cmd.linear.z = action[2]
         self.vel_pub.publish(vel_cmd)
         self.publish_markers(action)
 
@@ -183,15 +169,12 @@ class GazeboEnv:
         except (rospy.ServiceException) as e:
             print("/gazebo/pause_physics service call failed")
 
-        # read velodyne laser state
-        done, collision, min_laser = self.observe_collision(self.velodyne_data)
-        v_state = []
-        v_state[:] = self.velodyne_data[:]
-        laser_state = [v_state]
+        done, collision = False, False
 
         # Calculate robot heading from odometry data
         self.odom_x = self.last_odom.pose.pose.position.x
         self.odom_y = self.last_odom.pose.pose.position.y
+        self.odom_z = self.last_odom.pose.pose.position.z
         quaternion = Quaternion(
             self.last_odom.pose.pose.orientation.w,
             self.last_odom.pose.pose.orientation.x,
@@ -231,14 +214,25 @@ class GazeboEnv:
             target = True
             done = True
 
-        robot_state = [distance, theta, action[0], action[1]]
-        state = np.append(laser_state, robot_state)
-        reward = self.get_reward(target, collision, action, min_laser)
+        altitude = self.odom_z
+        if altitude < 1:
+            done = True
+        robot_state = [distance, theta, altitude - ALTITUDE, action[0], action[1], action[2]]
+        state = np.array(robot_state)
+        reward = self.get_reward(target, collision, action, altitude)
+        self.prev_state = np.array(robot_state)
         return state, reward, done, target
-        
+
     def reset(self):
-        if self.sim2real:
-            self.ACTION_NOISE = np.random.uniform(0.8, 1.2, 2)
+
+        # Landing
+        print("Landing...")
+        rospy.wait_for_service('mavros/set_mode')
+        try:
+            self.mode_proxy(0, 'AUTO.LAND')
+        except Exception as e:
+            print ("mavros/set_mode service call failed: %s"%e)
+        time.sleep(5)
 
         # Resets the state of the environment and returns an initial observation.
         rospy.wait_for_service("/gazebo/reset_world")
@@ -261,7 +255,7 @@ class GazeboEnv:
             position_ok = check_pos(x, y)
         object_state.pose.position.x = x
         object_state.pose.position.y = y
-        # object_state.pose.position.z = 0.
+        object_state.pose.position.z = 0.1 # ALTITUDE
         object_state.pose.orientation.x = quaternion.x
         object_state.pose.orientation.y = quaternion.y
         object_state.pose.orientation.z = quaternion.z
@@ -270,11 +264,35 @@ class GazeboEnv:
 
         self.odom_x = object_state.pose.position.x
         self.odom_y = object_state.pose.position.y
+        self.odom_z = object_state.pose.position.z
+
+        # Arm throttle
+        print("Arming")
+        rospy.wait_for_service('mavros/cmd/arming')
+        try:
+            self.arm_proxy(True)
+        except Exception as e:
+            print ("mavros/set_mode service call failed: %s"%e)
+        time.sleep(3)
+
+        # Takeoff
+        print("Taking off...")
+        rospy.wait_for_service('mavros/set_mode')
+        try:
+            self.mode_proxy(0, 'AUTO.TAKEOFF')
+        except Exception as e:
+            print ("mavros/set_mode service call failed: %s"%e)
+        time.sleep(5)
+
+        # Set OFFBOARD mode
+        rospy.wait_for_service('mavros/set_mode')
+        try:
+            self.mode_proxy(0, 'OFFBOARD')
+        except (rospy.ServiceException) as e:
+            print ("mavros/set_mode service call failed: %s"%e)
 
         # set a random goal in empty space in environment
         self.change_goal()
-        # randomly scatter boxes in the environment
-        self.random_box()
         self.publish_markers([0.0, 0.0])
 
         rospy.wait_for_service("/gazebo/unpause_physics")
@@ -290,9 +308,6 @@ class GazeboEnv:
             self.pause()
         except (rospy.ServiceException) as e:
             print("/gazebo/pause_physics service call failed")
-        v_state = []
-        v_state[:] = self.velodyne_data[:]
-        laser_state = [v_state]
 
         distance = np.linalg.norm(
             [self.odom_x - self.goal_x, self.odom_y - self.goal_y]
@@ -320,10 +335,10 @@ class GazeboEnv:
             theta = -np.pi - theta
             theta = np.pi - theta
 
-        self.prev_action = [0.0, 0.0]
-
-        robot_state = [distance, theta, 0.0, 0.0]
-        state = np.append(laser_state, robot_state)
+        altitude = self.odom_z
+        robot_state = [distance, theta, altitude - ALTITUDE, 0.0, 0.0, 0.0]
+        self.prev_state = np.array(robot_state)
+        state = np.array(robot_state)
         return state
 
     def change_goal(self):
@@ -339,34 +354,6 @@ class GazeboEnv:
             self.goal_x = self.odom_x + random.uniform(self.upper, self.lower)
             self.goal_y = self.odom_y + random.uniform(self.upper, self.lower)
             goal_ok = check_pos(self.goal_x, self.goal_y)
-
-    def random_box(self):
-        # Randomly change the location of the boxes in the environment on each reset to randomize the training
-        # environment
-        for i in range(4):
-            name = "cardboard_box_" + str(i)
-
-            x = 0
-            y = 0
-            box_ok = False
-            while not box_ok:
-                x = np.random.uniform(-6, 6)
-                y = np.random.uniform(-6, 6)
-                box_ok = check_pos(x, y)
-                distance_to_robot = np.linalg.norm([x - self.odom_x, y - self.odom_y])
-                distance_to_goal = np.linalg.norm([x - self.goal_x, y - self.goal_y])
-                if distance_to_robot < 1.5 or distance_to_goal < 1.5:
-                    box_ok = False
-            box_state = ModelState()
-            box_state.model_name = name
-            box_state.pose.position.x = x
-            box_state.pose.position.y = y
-            box_state.pose.position.z = 0.0
-            box_state.pose.orientation.x = 0.0
-            box_state.pose.orientation.y = 0.0
-            box_state.pose.orientation.z = 0.0
-            box_state.pose.orientation.w = 1.0
-            self.set_state.publish(box_state)
 
     def publish_markers(self, action):
         # Publish visual data in Rviz
@@ -432,30 +419,11 @@ class GazeboEnv:
         self.publisher3.publish(markerArray3)
 
     @staticmethod
-    def observe_collision(laser_data):
-        # Detect a collision from laser data
-        min_laser = min(laser_data)
-        if min_laser < COLLISION_DIST:
-            return True, True, min_laser
-        return False, False, min_laser
-
-    def get_reward(self, target, collision, action, min_laser):
+    def get_reward(target, collision, action, altitude):
         if target:
             return 100.0
-        elif collision:
+        elif collision or altitude < 1:
             return -100.0
         else:
-            r1 = action[0]
-            r2 = -abs(action[1])
-            r3 = -(1 - min_laser) if min_laser < 1 else 0.0
-            v_diff = abs(self.prev_action[0] - action[0])
-            w_diff = abs(self.prev_action[1] - action[1])
-            self.prev_action = action
-            r4 = v_diff + w_diff
-
-            w1 = 1.0
-            w2 = 1.0
-            w3 = 1.0
-            w4 = 0.0
-
-            return w1*r1 + w2*r2 + w3*r3 + w4*r4
+            r3 = lambda x: abs(x - ALTITUDE)
+            return action[0] / 2 - abs(action[1]) / 2 - abs(action[2]) / 2 - r3(altitude) / 2

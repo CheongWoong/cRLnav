@@ -1,0 +1,12 @@
+# drone env in gym-gazebo (deprecated)
+https://github.com/erlerobot/gym-gazebo/blob/master/gym_gazebo/envs/erlecopter/gazebo_erlecopter_hover.py
+
+# Telemetry Forwarding 
+https://ardupilot.org/mavproxy/docs/getting_started/forwarding.html#mavproxy-forwarding
+
+
+# Disable lockstep in simulation
+https://docs.px4.io/main/en/simulation/
+
+# Set mav frame to body frame
+rosservice call /mavros/setpoint_velocity/mav_frame "mav_frame: 8"

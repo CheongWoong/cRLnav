@@ -68,7 +68,7 @@ class GazeboEnv:
     """Superclass for all Gazebo environments."""
 
     def __init__(self, launchfile, environment_dim):
-        self.invalid_action_clipping = True
+        self.invalid_action_clipping = False
 
         self.environment_dim = environment_dim
         self.odom_x = 0

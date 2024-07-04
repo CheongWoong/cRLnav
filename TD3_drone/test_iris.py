@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from rosbot_env import GazeboEnv
+from test_iris_env import GazeboEnv
 
 
 class Actor(nn.Module):
@@ -38,7 +38,7 @@ class TD3(object):
     def load(self, filename, directory):
         # Function to load network parameters
         self.actor.load_state_dict(
-            torch.load("%s/%s_actor.pth" % (directory, filename))
+            torch.load("%s/actor.pth" % (directory))
         )
 
 
@@ -50,14 +50,14 @@ file_name = "TD3_velodyne"  # name of the file to load the policy from
 
 
 # Create the testing environment
-environment_dim = 20
-robot_dim = 4
-env = GazeboEnv("multi_robot_scenario_rosbot.launch", environment_dim)
+environment_dim = 0
+robot_dim = 6
+env = GazeboEnv(environment_dim)
 time.sleep(5)
 torch.manual_seed(seed)
 np.random.seed(seed)
 state_dim = environment_dim + robot_dim
-action_dim = 2
+action_dim = 3
 
 # Create the network
 network = TD3(state_dim, action_dim)
@@ -75,7 +75,7 @@ while True:
     action = network.get_action(np.array(state))
 
     # Update action to fall in range [0,1] for linear velocity and [-1,1] for angular velocity
-    a_in = [(action[0] + 1) / 2, action[1]]
+    a_in = [(action[0] + 1) / 2, action[1], action[2]]
     next_state, reward, done, target = env.step(a_in)
     done = 1 if episode_timesteps + 1 == max_ep else int(done)
 
